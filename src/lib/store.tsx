@@ -1,4 +1,71 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { db, auth } from '../firebase';
+import { 
+  doc, 
+  setDoc, 
+  onSnapshot, 
+  collection, 
+  query, 
+  orderBy, 
+  addDoc, 
+  deleteDoc,
+  getDoc,
+  serverTimestamp,
+  getDocFromServer
+} from 'firebase/firestore';
+import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, User } from 'firebase/auth';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  // We don't throw here to avoid crashing the whole app, but we log it clearly
+  return errInfo;
+}
 
 export interface Product {
   id: number;
@@ -113,6 +180,9 @@ interface AppState {
   setLanguage: (lang: 'en' | 'es' | 'fr') => void;
   adminLang: 'en' | 'tr';
   setAdminLang: (lang: 'en' | 'tr') => void;
+  user: User | null;
+  login: () => Promise<void>;
+  logout: () => Promise<void>;
   globalData: GlobalData;
   updateGlobal: (data: GlobalData) => void;
   products: Product[];
@@ -135,6 +205,7 @@ interface AppState {
   deleteNewsletterLead: (id: number) => void;
   welcomePopupData: WelcomePopupData;
   updateWelcomePopup: (data: WelcomePopupData) => void;
+  isAuthReady: boolean;
 }
 
 const defaultPopupFields = {
@@ -277,153 +348,300 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [adminLang, setAdminLang] = useState<'en' | 'tr'>(() => {
     return (localStorage.getItem('app_admin_lang') as 'en' | 'tr') || 'en';
   });
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(true);
   
-  const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem('app_products_v2');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
-  });
+  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [globalData, setGlobalData] = useState<GlobalData>(INITIAL_GLOBAL);
+  const [homeData, setHomeData] = useState<HomeData>(INITIAL_HOME);
+  const [aboutData, setAboutData] = useState<AboutData>(INITIAL_ABOUT);
+  const [reviews, setReviews] = useState<Review[]>(INITIAL_REVIEWS);
+  const [footerData, setFooterData] = useState<FooterData>(INITIAL_FOOTER);
+  const [discountLeads, setDiscountLeads] = useState<DiscountLead[]>([]);
+  const [newsletterLeads, setNewsletterLeads] = useState<NewsletterLead[]>([]);
+  const [welcomePopupData, setWelcomePopupData] = useState<WelcomePopupData>(INITIAL_WELCOME_POPUP);
 
-  const [globalData, setGlobalData] = useState<GlobalData>(() => {
-    const saved = localStorage.getItem('app_global_v2');
-    if (!saved) return INITIAL_GLOBAL;
-    const parsed = JSON.parse(saved);
-    return {
-      ...INITIAL_GLOBAL,
-      ...parsed,
-      menu1En: parsed.menu1En || INITIAL_GLOBAL.menu1En,
-      menu1Es: parsed.menu1Es || INITIAL_GLOBAL.menu1Es,
-      menu1Fr: parsed.menu1Fr || INITIAL_GLOBAL.menu1Fr,
-      menu1Link: parsed.menu1Link || INITIAL_GLOBAL.menu1Link,
-      menu2En: parsed.menu2En || INITIAL_GLOBAL.menu2En,
-      menu2Es: parsed.menu2Es || INITIAL_GLOBAL.menu2Es,
-      menu2Fr: parsed.menu2Fr || INITIAL_GLOBAL.menu2Fr,
-      menu2Link: parsed.menu2Link || INITIAL_GLOBAL.menu2Link,
-      menu3En: parsed.menu3En || INITIAL_GLOBAL.menu3En,
-      menu3Es: parsed.menu3Es || INITIAL_GLOBAL.menu3Es,
-      menu3Fr: parsed.menu3Fr || INITIAL_GLOBAL.menu3Fr,
-      menu3Link: parsed.menu3Link || INITIAL_GLOBAL.menu3Link,
-      menu4En: parsed.menu4En || INITIAL_GLOBAL.menu4En,
-      menu4Es: parsed.menu4Es || INITIAL_GLOBAL.menu4Es,
-      menu4Fr: parsed.menu4Fr || INITIAL_GLOBAL.menu4Fr,
-      menu4Link: parsed.menu4Link || INITIAL_GLOBAL.menu4Link,
-      discountCode: parsed.discountCode || INITIAL_GLOBAL.discountCode,
-      discountLink: parsed.discountLink || INITIAL_GLOBAL.discountLink,
-    };
-  });
-  
-  const [homeData, setHomeData] = useState<HomeData>(() => {
-    const saved = localStorage.getItem('app_home_v2');
-    if (!saved) return INITIAL_HOME;
-    const parsed = JSON.parse(saved);
-    return {
-      ...INITIAL_HOME,
-      ...parsed,
-      button1En: parsed.button1En || INITIAL_HOME.button1En,
-      button1Es: parsed.button1Es || INITIAL_HOME.button1Es,
-      button1Fr: parsed.button1Fr || INITIAL_HOME.button1Fr,
-      button2En: parsed.button2En || INITIAL_HOME.button2En,
-      button2Es: parsed.button2Es || INITIAL_HOME.button2Es,
-      button2Fr: parsed.button2Fr || INITIAL_HOME.button2Fr,
-    };
-  });
+  // Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
 
-  const [aboutData, setAboutData] = useState<AboutData>(() => {
-    const saved = localStorage.getItem('app_about_v2');
-    return saved ? JSON.parse(saved) : INITIAL_ABOUT;
-  });
+  // Connection Test
+  useEffect(() => {
+    async function testConnection() {
+      try {
+        await getDocFromServer(doc(db, 'settings', 'content'));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration. The client is offline.");
+        }
+      }
+    }
+    testConnection();
+  }, []);
 
-  const [reviews, setReviews] = useState<Review[]>(() => {
-    const saved = localStorage.getItem('app_reviews_v2');
-    return saved ? JSON.parse(saved) : INITIAL_REVIEWS;
-  });
+  // Firestore Sync - Content
+  useEffect(() => {
+    const path = 'settings/content';
+    const unsub = onSnapshot(doc(db, 'settings', 'content'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data.globalData) setGlobalData(data.globalData);
+        if (data.homeData) setHomeData(data.homeData);
+        if (data.aboutData) setAboutData(data.aboutData);
+        if (data.footerData) setFooterData(data.footerData);
+        if (data.welcomePopupData) setWelcomePopupData(data.welcomePopupData);
+      } else if (user?.email === "nerooinmarketing@gmail.com") {
+        // Bootstrap initial data to Firestore if it doesn't exist (Admin only)
+        setDoc(doc(db, 'settings', 'content'), {
+          globalData: INITIAL_GLOBAL,
+          homeData: INITIAL_HOME,
+          aboutData: INITIAL_ABOUT,
+          footerData: INITIAL_FOOTER,
+          welcomePopupData: INITIAL_WELCOME_POPUP,
+          updatedAt: serverTimestamp()
+        }).catch(err => handleFirestoreError(err, OperationType.WRITE, path));
+      }
+      setIsDataLoading(false);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, path);
+      setIsDataLoading(false);
+    });
+    return () => unsub();
+  }, [user]);
 
-  const [footerData, setFooterData] = useState<FooterData>(() => {
-    const saved = localStorage.getItem('app_footer_v2');
-    if (!saved) return INITIAL_FOOTER;
-    const parsed = JSON.parse(saved);
-    return {
-      ...INITIAL_FOOTER,
-      ...parsed,
-    };
-  });
+  // Firestore Sync - Products
+  useEffect(() => {
+    const path = 'products';
+    const q = query(collection(db, 'products'), orderBy('id', 'asc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const items = snapshot.docs.map(d => d.data() as Product);
+        setProducts(items);
+      } else if (user?.email === "nerooinmarketing@gmail.com") {
+        // Bootstrap products (Admin only)
+        INITIAL_PRODUCTS.forEach(p => {
+          setDoc(doc(db, 'products', p.id.toString()), p).catch(err => handleFirestoreError(err, OperationType.WRITE, `products/${p.id}`));
+        });
+      }
+    }, (err) => handleFirestoreError(err, OperationType.LIST, path));
+    return () => unsub();
+  }, [user]);
 
-  const [discountLeads, setDiscountLeads] = useState<DiscountLead[]>(() => {
-    const saved = localStorage.getItem('app_discount_leads');
-    return saved ? JSON.parse(saved) : [];
-  });
+  // Firestore Sync - Reviews
+  useEffect(() => {
+    const path = 'reviews';
+    const q = query(collection(db, 'reviews'), orderBy('id', 'asc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const items = snapshot.docs.map(d => d.data() as Review);
+        setReviews(items);
+      } else if (user?.email === "nerooinmarketing@gmail.com") {
+        INITIAL_REVIEWS.forEach(r => {
+          setDoc(doc(db, 'reviews', r.id.toString()), r).catch(err => handleFirestoreError(err, OperationType.WRITE, `reviews/${r.id}`));
+        });
+      }
+    }, (err) => handleFirestoreError(err, OperationType.LIST, path));
+    return () => unsub();
+  }, [user]);
 
-  const [newsletterLeads, setNewsletterLeads] = useState<NewsletterLead[]>(() => {
-    const saved = localStorage.getItem('app_newsletter_leads');
-    return saved ? JSON.parse(saved) : [];
-  });
+  // Firestore Sync - Leads
+  useEffect(() => {
+    if (!user || user.email !== "nerooinmarketing@gmail.com") {
+      setDiscountLeads([]);
+      setNewsletterLeads([]);
+      return;
+    }
+    const path = 'leads';
+    const q = query(collection(db, 'leads'), orderBy('date', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const allLeads = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as any));
+      setDiscountLeads(allLeads.filter((l: any) => l.type === 'discount'));
+      setNewsletterLeads(allLeads.filter((l: any) => l.type === 'newsletter'));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, path));
+    return () => unsub();
+  }, [user]);
 
-  const [welcomePopupData, setWelcomePopupData] = useState<WelcomePopupData>(() => {
-    const saved = localStorage.getItem('app_welcome_popup_v2');
-    if (!saved) return INITIAL_WELCOME_POPUP;
-    const parsed = JSON.parse(saved);
-    return {
-      ...INITIAL_WELCOME_POPUP,
-      ...parsed,
-    };
-  });
+  const login = async () => {
+    console.log("Login initiated...");
+    setIsLoggingIn(true);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    try {
+      console.log("Calling signInWithPopup...");
+      const result = await signInWithPopup(auth, provider);
+      console.log("Login successful:", result.user.email);
+    } catch (err: any) {
+      console.error("Login error details:", err);
+      if (err.code === 'auth/popup-blocked') {
+        alert("Giriş penceresi engellendi. Lütfen tarayıcınızın adres çubuğundaki popup engelleyiciyi kapatıp tekrar deneyin.");
+      } else if (err.code === 'auth/unauthorized-domain') {
+        alert("Bu alan adı Firebase'de henüz yetkilendirilmemiş. Lütfen Firebase Console -> Auth -> Settings -> Authorized Domains kısmına bu adresi ekleyin: " + window.location.hostname);
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        // Ignore, user just closed the popup
+      } else {
+        alert("Giriş hatası (" + err.code + "): " + err.message);
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
 
-  useEffect(() => { localStorage.setItem('app_products_v2', JSON.stringify(products)); }, [products]);
-  useEffect(() => { localStorage.setItem('app_global_v2', JSON.stringify(globalData)); }, [globalData]);
-  useEffect(() => { localStorage.setItem('app_home_v2', JSON.stringify(homeData)); }, [homeData]);
-  useEffect(() => { localStorage.setItem('app_about_v2', JSON.stringify(aboutData)); }, [aboutData]);
-  useEffect(() => { localStorage.setItem('app_reviews_v2', JSON.stringify(reviews)); }, [reviews]);
-  useEffect(() => { localStorage.setItem('app_footer_v2', JSON.stringify(footerData)); }, [footerData]);
-  useEffect(() => { localStorage.setItem('app_discount_leads', JSON.stringify(discountLeads)); }, [discountLeads]);
-  useEffect(() => { localStorage.setItem('app_newsletter_leads', JSON.stringify(newsletterLeads)); }, [newsletterLeads]);
-  useEffect(() => { localStorage.setItem('app_welcome_popup_v2', JSON.stringify(welcomePopupData)); }, [welcomePopupData]);
-  useEffect(() => { localStorage.setItem('app_admin_lang', adminLang); }, [adminLang]);
+  const logout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
+  };
 
-  const updateProduct = (updated: Product) => setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
-  const addProduct = (product: Product) => setProducts(prev => [...prev, product]);
-  const deleteProduct = (id: number) => setProducts(prev => prev.filter(p => p.id !== id));
-  const updateGlobal = (data: GlobalData) => setGlobalData(data);
-  const updateHome = (data: HomeData) => setHomeData(data);
-  const updateAbout = (data: AboutData) => setAboutData(data);
-  const updateReview = (updated: Review) => setReviews(prev => prev.map(r => r.id === updated.id ? updated : r));
-  const updateFooter = (data: FooterData) => setFooterData(data);
-  const updateWelcomePopup = (data: WelcomePopupData) => setWelcomePopupData(data);
+  const updateGlobal = async (data: GlobalData) => {
+    setGlobalData(data);
+    const path = 'settings/content';
+    try {
+      await setDoc(doc(db, 'settings', 'content'), { globalData: data }, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  };
 
-  const addDiscountLead = (leadData: Omit<DiscountLead, 'id' | 'date'>) => {
-    setDiscountLeads(prev => {
-      const newId = prev.length > 0 ? Math.max(...prev.map(l => l.id)) + 1 : 1;
-      const newLead: DiscountLead = {
+  const updateHome = async (data: HomeData) => {
+    setHomeData(data);
+    const path = 'settings/content';
+    try {
+      await setDoc(doc(db, 'settings', 'content'), { homeData: data }, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  };
+
+  const updateAbout = async (data: AboutData) => {
+    setAboutData(data);
+    const path = 'settings/content';
+    try {
+      await setDoc(doc(db, 'settings', 'content'), { aboutData: data }, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  };
+
+  const updateFooter = async (data: FooterData) => {
+    setFooterData(data);
+    const path = 'settings/content';
+    try {
+      await setDoc(doc(db, 'settings', 'content'), { footerData: data }, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  };
+
+  const updateWelcomePopup = async (data: WelcomePopupData) => {
+    setWelcomePopupData(data);
+    const path = 'settings/content';
+    try {
+      await setDoc(doc(db, 'settings', 'content'), { welcomePopupData: data }, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  };
+
+  const updateProduct = async (updated: Product) => {
+    setProducts(prev => prev.map(p => p.id === updated.id ? updated : p));
+    const path = `products/${updated.id}`;
+    try {
+      await setDoc(doc(db, 'products', updated.id.toString()), updated);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  };
+
+  const addProduct = async (product: Product) => {
+    setProducts(prev => [...prev, product]);
+    const path = `products/${product.id}`;
+    try {
+      await setDoc(doc(db, 'products', product.id.toString()), product);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  };
+
+  const deleteProduct = async (id: number) => {
+    setProducts(prev => prev.filter(p => p.id !== id));
+    const path = `products/${id}`;
+    try {
+      await deleteDoc(doc(db, 'products', id.toString()));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, path);
+    }
+  };
+
+  const updateReview = async (updated: Review) => {
+    setReviews(prev => prev.map(r => r.id === updated.id ? updated : r));
+    const path = `reviews/${updated.id}`;
+    try {
+      await setDoc(doc(db, 'reviews', updated.id.toString()), updated);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  };
+
+  const addDiscountLead = async (leadData: Omit<DiscountLead, 'id' | 'date'>) => {
+    const path = 'leads';
+    try {
+      await addDoc(collection(db, 'leads'), {
         ...leadData,
-        id: newId,
+        type: 'discount',
         date: new Date().toISOString()
-      };
-      return [newLead, ...prev];
-    });
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, path);
+    }
   };
 
-  const deleteDiscountLead = (id: number) => {
-    setDiscountLeads(prev => prev.filter(l => l.id !== id));
-  };
-
-  const addNewsletterLead = (email: string) => {
-    setNewsletterLeads(prev => {
-      const newId = prev.length > 0 ? Math.max(...prev.map(l => l.id)) + 1 : 1;
-      const newLead: NewsletterLead = {
-        id: newId,
+  const addNewsletterLead = async (email: string) => {
+    const path = 'leads';
+    try {
+      await addDoc(collection(db, 'leads'), {
         email,
+        type: 'newsletter',
         date: new Date().toISOString()
-      };
-      return [newLead, ...prev];
-    });
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, path);
+    }
   };
 
-  const deleteNewsletterLead = (id: number) => {
-    setNewsletterLeads(prev => prev.filter(l => l.id !== id));
+  const deleteDiscountLead = async (id: number) => {
+    const path = `leads/${id}`;
+    try {
+      await deleteDoc(doc(db, 'leads', id.toString()));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, path);
+    }
   };
+
+  const deleteNewsletterLead = async (id: number) => {
+    const path = `leads/${id}`;
+    try {
+      await deleteDoc(doc(db, 'leads', id.toString()));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, path);
+    }
+  };
+
+  useEffect(() => { localStorage.setItem('app_admin_lang', adminLang); }, [adminLang]);
 
   return (
     <AppContext.Provider value={{ 
       language, setLanguage, 
       adminLang, setAdminLang,
+      user, login, logout, isAuthReady,
       globalData, updateGlobal,
       products, updateProduct, addProduct, deleteProduct,
       homeData, updateHome,
@@ -432,7 +650,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       footerData, updateFooter,
       discountLeads, addDiscountLead, deleteDiscountLead,
       newsletterLeads, addNewsletterLead, deleteNewsletterLead,
-      welcomePopupData, updateWelcomePopup
+      welcomePopupData, updateWelcomePopup,
+      isAuthReady,
+      isLoggingIn,
+      isDataLoading
     }}>
       {children}
     </AppContext.Provider>

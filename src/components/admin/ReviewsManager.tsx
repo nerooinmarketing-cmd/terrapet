@@ -38,11 +38,16 @@ export default function ReviewsManager() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (review) {
       setIsSaving(true);
-      updateReview(review);
-      setTimeout(() => setIsSaving(false), 500);
+      try {
+        await updateReview(review);
+      } catch (error: any) {
+        alert("Kaydetme başarısız: " + error.message);
+      } finally {
+        setTimeout(() => setIsSaving(false), 1000);
+      }
     }
   };
 

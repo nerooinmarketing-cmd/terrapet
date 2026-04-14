@@ -32,54 +32,70 @@ import WelcomePopupManager from "../components/admin/WelcomePopupManager";
 type Tab = "global" | "home" | "products" | "about" | "reviews" | "footer" | "leads" | "newsletter" | "welcomePopup";
 
 export default function Dashboard() {
-  const { adminLang, setAdminLang } = useAppContext();
+  const { adminLang, setAdminLang, user, login, logout, isAuthReady, isLoggingIn } = useAppContext();
   const [activeTab, setActiveTab] = useState<Tab>("global");
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
 
   const t = (en: string, tr: string) => adminLang === 'tr' ? tr : en;
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password === "Sendoz_81") {
-      setIsAuthenticated(true);
-      setError("");
-    } else {
-      setError(t("Incorrect password", "Hatalı şifre"));
-    }
-  };
+  if (!isAuthReady) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
-  if (!isAuthenticated) {
+  const isAdmin = user?.email === "nerooinmarketing@gmail.com";
+
+  if (!user || !isAdmin) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 w-full max-w-md">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 w-full max-w-md text-center">
           <div className="flex items-center justify-center mb-8">
             <div className="bg-primary p-3 rounded-xl text-white">
               <LayoutDashboard size={28} />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-center text-gray-900 mb-2">{t("Admin Login", "Yönetici Girişi")}</h1>
-          <p className="text-center text-gray-500 mb-8">{t("Please enter your password to continue.", "Devam etmek için lütfen şifrenizi girin.")}</p>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">{t("Admin Login", "Yönetici Girişi")}</h1>
+          <div className="text-gray-500 mb-8">
+            {!user ? (
+              <p>{t("Please login with your Google account to continue.", "Devam etmek için lütfen Google hesabınızla giriş yapın.")}</p>
+            ) : !isAdmin ? (
+              <div className="space-y-2">
+                <p className="text-red-500 font-medium">{t("Access Denied", "Erişim Engellendi")}</p>
+                <p className="text-sm">
+                  {t("Logged in as:", "Giriş yapılan hesap:")} <span className="font-bold text-gray-700">{user.email}</span>
+                </p>
+                <p className="text-xs italic">
+                  {t("Only 'nerooinmarketing@gmail.com' has admin access.", "Sadece 'nerooinmarketing@gmail.com' hesabı yetkilidir.")}
+                </p>
+              </div>
+            ) : (
+              <p>{t("Redirecting...", "Yönlendiriliyor...")}</p>
+            )}
+          </div>
           
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <input 
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={t("Password", "Şifre")}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-              />
-              {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
-            </div>
+          {!user ? (
             <button 
-              type="submit"
-              className="w-full bg-primary text-white py-3 rounded-xl font-bold hover:bg-primary-light transition-all"
+              onClick={login}
+              disabled={isLoggingIn}
+              className="w-full bg-primary text-white py-3 rounded-xl font-bold hover:bg-primary-light transition-all flex items-center justify-center gap-2 disabled:opacity-70"
             >
-              {t("Login", "Giriş Yap")}
+              {isLoggingIn ? (
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              ) : (
+                <Globe size={20} />
+              )}
+              {isLoggingIn ? t("Logging in...", "Giriş yapılıyor...") : t("Login with Google", "Google ile Giriş Yap")}
             </button>
-          </form>
+          ) : (
+            <button 
+              onClick={logout}
+              className="w-full bg-gray-100 text-gray-600 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all"
+            >
+              {t("Logout", "Çıkış Yap")}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -149,6 +165,13 @@ export default function Dashboard() {
             <Globe size={18} className="text-gray-400" />
             {t("View Live Site", "Siteyi Görüntüle")}
           </a>
+          <button 
+            onClick={logout}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 transition-all"
+          >
+            <span className="material-symbols-outlined text-red-400">logout</span>
+            {t("Logout", "Çıkış Yap")}
+          </button>
         </div>
       </aside>
 
@@ -235,11 +258,16 @@ function ProductsManager() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (product) {
       setIsSaving(true);
-      updateProduct(product);
-      setTimeout(() => setIsSaving(false), 500); // Visual feedback
+      try {
+        await updateProduct(product);
+      } catch (error: any) {
+        alert("Kaydetme başarısız: " + error.message);
+      } finally {
+        setTimeout(() => setIsSaving(false), 1000); // Visual feedback
+      }
     }
   };
 

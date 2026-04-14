@@ -1,0 +1,89 @@
+{
+  "entities": {
+    "AppSettings": {
+      "title": "Application Settings",
+      "description": "Global configuration and content for the application",
+      "type": "object",
+      "properties": {
+        "globalData": { "type": "object" },
+        "homeData": { "type": "object" },
+        "aboutData": { "type": "object" },
+        "footerData": { "type": "object" },
+        "welcomePopupData": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Product information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "titleEn": { "type": "string" },
+        "titleEs": { "type": "string" },
+        "titleFr": { "type": "string" },
+        "descEn": { "type": "string" },
+        "descEs": { "type": "string" },
+        "descFr": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "linkText": { "type": "string" },
+        "images": { "type": "array" },
+        "benefitsEn": { "type": "string" },
+        "benefitsEs": { "type": "string" },
+        "benefitsFr": { "type": "string" },
+        "compositionEn": { "type": "string" },
+        "compositionEs": { "type": "string" },
+        "compositionFr": { "type": "string" },
+        "directionsEn": { "type": "string" },
+        "directionsEs": { "type": "string" },
+        "directionsFr": { "type": "string" },
+        "amazonLink": { "type": "string" }
+      }
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Customer review",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "initials": { "type": "string" },
+        "rating": { "type": "number" },
+        "textEn": { "type": "string" },
+        "textEs": { "type": "string" },
+        "textFr": { "type": "string" }
+      }
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "Customer lead from discount or newsletter",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "email": { "type": "string" },
+        "type": { "type": "string", "enum": ["discount", "newsletter"] },
+        "date": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "/settings/content": {
+      "schema": "AppSettings",
+      "description": "Global application content and settings"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of products"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Collection of customer reviews"
+    },
+    "/leads/{leadId}": {
+      "schema": "Lead",
+      "description": "Collection of customer leads"
+    }
+  }
+}

@@ -52,10 +52,15 @@ export default function AboutManager() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    updateAbout(data);
-    setTimeout(() => setIsSaving(false), 500);
+    try {
+      await updateAbout(data);
+    } catch (error: any) {
+      alert("Kaydetme başarısız: " + error.message);
+    } finally {
+      setTimeout(() => setIsSaving(false), 1000);
+    }
   };
 
   return (

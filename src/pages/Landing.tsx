@@ -8,7 +8,7 @@ import WelcomePopup from "../components/WelcomePopup";
 import WeatherWidget from "../components/WeatherWidget";
 
 export default function Landing() {
-  const { products, homeData, aboutData, reviews, footerData, globalData, language, setLanguage, addNewsletterLead } = useAppContext();
+  const { products, homeData, aboutData, reviews, footerData, globalData, language, setLanguage, addNewsletterLead, isDataLoading } = useAppContext();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -35,6 +35,14 @@ export default function Landing() {
       setTimeout(() => setIsNewsletterSubscribed(false), 3000);
     }
   };
+
+  if (isDataLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-new-surface">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-900"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-new-surface font-body text-on-surface antialiased min-h-screen">

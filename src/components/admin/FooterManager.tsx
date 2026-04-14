@@ -92,10 +92,15 @@ export default function FooterManager() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    updateFooter(data);
-    setTimeout(() => setIsSaving(false), 500);
+    try {
+      await updateFooter(data);
+    } catch (error: any) {
+      alert("Kaydetme başarısız: " + error.message);
+    } finally {
+      setTimeout(() => setIsSaving(false), 1000);
+    }
   };
 
   return (

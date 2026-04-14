@@ -39,10 +39,16 @@ export default function WelcomePopupManager() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    updateWelcomePopup(data);
-    setTimeout(() => setIsSaving(false), 500);
+    try {
+      await updateWelcomePopup(data);
+      // alert("Başarıyla kaydedildi!"); // Optional: Can uncomment if they want an alert, but the button text changes to "Saved!" anyway.
+    } catch (error: any) {
+      alert("Kaydetme başarısız: " + error.message);
+    } finally {
+      setTimeout(() => setIsSaving(false), 1000);
+    }
   };
 
   const getEmbedUrl = (url: string) => {
@@ -137,6 +143,10 @@ export default function WelcomePopupManager() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
+                        if (file.size > 1024 * 1024) {
+                          alert(t("File too large! Maximum size is 1MB. For larger videos, please use a YouTube link.", "Dosya çok büyük! Maksimum boyut 1MB. Daha büyük videolar için lütfen YouTube linki kullanın."));
+                          return;
+                        }
                         const reader = new FileReader();
                         reader.onloadend = () => {
                           setData({...data, videoUrl: reader.result as string});
@@ -156,7 +166,7 @@ export default function WelcomePopupManager() {
               />
               {data.videoUrl && (
                 <div className="mt-2 aspect-[9/16] md:aspect-video rounded-lg overflow-hidden bg-black border border-gray-200 max-h-[300px] flex items-center justify-center">
-                  {data.videoUrl.startsWith('data:video/') || data.videoUrl.endsWith('.mp4') ? (
+                  {data.videoUrl.startsWith('data:video/') || data.videoUrl.toLowerCase().includes('.mp4') || data.videoUrl.toLowerCase().includes('.mov') ? (
                     <video 
                       src={data.videoUrl} 
                       className="w-full h-full object-contain" 

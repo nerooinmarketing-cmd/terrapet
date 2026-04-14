@@ -52,10 +52,15 @@ export default function HomeManager() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    updateHome(data);
-    setTimeout(() => setIsSaving(false), 500);
+    try {
+      await updateHome(data);
+    } catch (error: any) {
+      alert("Kaydetme başarısız: " + error.message);
+    } finally {
+      setTimeout(() => setIsSaving(false), 1000);
+    }
   };
 
   return (

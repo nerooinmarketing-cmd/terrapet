@@ -1,9 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../lib/store';
 
 export default function WelcomePopup() {
-  const { language, welcomePopupData } = useAppContext();
-  const [isOpen, setIsOpen] = useState(true); // Always open on load as requested
+  const { language, welcomePopupData, isDataLoading } = useAppContext();
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Sadece veri yüklendikten sonra ve popup aktifse göster
+  useEffect(() => {
+    if (!isDataLoading && welcomePopupData.isActive) {
+      setIsOpen(true);
+    }
+  }, [isDataLoading, welcomePopupData.isActive]);
+
+  const closePopup = () => {
+    setIsOpen(false);
+  };
 
   if (!isOpen || !welcomePopupData.isActive) return null;
 
@@ -33,14 +44,14 @@ export default function WelcomePopup() {
       {/* Blurred overlay */}
       <div 
         className="absolute inset-0 bg-[#191c1e]/40 backdrop-blur-md"
-        onClick={() => setIsOpen(false)}
+        onClick={closePopup}
       ></div>
 
       <div className="bg-white w-full max-w-5xl rounded-[2rem] overflow-hidden shadow-[0px_12px_32px_rgba(25,28,30,0.08)] flex flex-col md:flex-row relative z-10 max-h-[95vh]">
         
         {/* Close Button */}
         <button 
-          onClick={() => setIsOpen(false)}
+          onClick={closePopup}
           className="absolute top-4 right-4 md:top-6 md:right-6 z-50 bg-white/80 hover:bg-white p-2 rounded-full transition-all group backdrop-blur-md shadow-sm"
         >
           <span className="material-symbols-outlined text-gray-600 group-hover:text-gray-900">close</span>
@@ -50,7 +61,10 @@ export default function WelcomePopup() {
           {/* Visual Side (Left/Top) */}
           <div className="w-full md:w-5/12 relative min-h-[400px] md:min-h-[600px] bg-black overflow-hidden shrink-0 flex items-center justify-center">
             {welcomePopupData.videoUrl ? (
-              welcomePopupData.videoUrl.startsWith('data:video/') || welcomePopupData.videoUrl.endsWith('.mp4') ? (
+              welcomePopupData.videoUrl.startsWith('data:video/') || 
+              welcomePopupData.videoUrl.toLowerCase().includes('.mp4') || 
+              welcomePopupData.videoUrl.toLowerCase().includes('.mov') ||
+              welcomePopupData.videoUrl.toLowerCase().includes('.webm') ? (
                 <video 
                   src={welcomePopupData.videoUrl} 
                   className="w-full h-full object-cover md:object-contain" 
@@ -119,7 +133,7 @@ export default function WelcomePopup() {
               
               {/* Dismiss Link */}
               <button 
-                onClick={() => setIsOpen(false)}
+                onClick={closePopup}
                 className="text-[#414844] hover:text-[#006c49] font-semibold text-sm transition-colors duration-300 border-b border-transparent hover:border-[#006c49] pb-1"
               >
                 {btn2Text}
